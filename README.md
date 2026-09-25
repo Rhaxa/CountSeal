@@ -1,65 +1,145 @@
-# CountSeal
+&lt;div align="center"&gt;
 
-*A council of AI agents that counts its votes until it seals the deal.*
+# 🦭 CountSeal
 
-## What it does
+**A council of AI agents that counts its votes until it seals the deal.**
 
-You give it a brief with a Definition of Done. It opens three Firefox windows (persistent profiles, already logged in), has the agents ratify the DoD, then runs a round-robin work loop where each agent only receives the messages it hasn't seen yet (delta relay). The session ends when all agents unanimously mark DONE, or via a safety cap. Every run writes a human-readable transcript plus machine-readable ledger and metadata to `conversations/<session-id>/`.
+![Node](https://img.shields.io/badge/node-%3E%3D22-339933)
+![Playwright](https://img.shields.io/badge/playwright-1.57.0-45ba4b)
+![Browser](https://img.shields.io/badge/browser-Firefox-ff7139)
+![Cost](https://img.shields.io/badge/API%20cost-%240-2ea44f)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-## Requirements
+&lt;/div&gt;
 
-- macOS 13+ (developed on Ventura; `playwright` is pinned to `1.57.0` because 1.58+ drops macOS 13)
-- Node.js 22+ (`node -v` to check)
-- Accounts on the three providers (log in manually, once — the tool never touches credentials)
+---
 
-## Setup
+## The elevator pitch
 
+&gt; **CountSeal is a multi-agent AI orchestrator where a council of AI agents debates, votes, and reaches consensus to "seal the deal" on decisions.** It drives three real, logged-in browser sessions (DeepSeek, Kimi, Qwen) through Playwright, relays only unseen messages between them (delta relay), and terminates the moment every agent commits to DONE against a frozen, human-approved Definition of Done.
+
+No APIs. No subscriptions. The orchestrator is ~800 lines of dependency-light Node.js; the "database" is each provider's native chat history.
+
+## Demo
+
+*(Record yours — see "Capturing the demo" below. GitHub plays video natively in READMEs.)*
+
+```text
+[11:53:55] DeepSeek: vote → RATIFY
+[11:54:32] Kimi: vote → RATIFY
+[11:55:33] DoD ratified unanimously — frozen. Work loop begins.
+[11:56:16] Kimi: marked DONE
+[11:56:55] Qwen: marked DONE
+[11:58:58] DeepSeek: marked DONE
+[11:59:01] session complete — unanimous_done
+```
+
+## Why I built it
+
+Single LLM calls hallucinate and self-validate. I wanted to explore whether **multi-agent architectures with role separation and explicit consensus gates** produce more reliable decisions than one model talking to itself — a QA agent that can *revoke* DONE citing a specific unverified item is a structural check no prompt wrapper provides.
+
+Just as interesting to me: could this be built with **zero API spend**? Instead of paid endpoints, CountSeal treats commercial chat UIs as the transport layer. That constraint forced the hard, fun engineering — protocol design over brittle DOMs, message-boundary detection, and graceful human-in-the-loop failure handling — which is where most of the value of this project lives.
+
+## How it works
+
+Every reply is framed by a machine-readable protocol, so a chat UI becomes a reliable IPC channel:
+
+- **Sentinel protocol** — each agent must end every response with `[[END_7f3a]]` + exactly one status line: `[[STATUS: IN_PROGRESS | DONE | BLOCKED: reason]]`.
+- **Phase 0 ratification** — the orchestrator proposes a candidate Definition of Done; each agent votes `[[RATIFY]] / [[AMEND: ...]] / [[REJECT: ...]]`. Amendments route to a human for approval; the DoD is then frozen and re-injected verbatim into every prompt.
+- **Delta relay** — agents receive *only* messages they haven't seen, prefixed by role, keeping context small and conversations coherent across three independent chat histories.
+- **Sticky DONE + revocation** — DONE is a commitment; revoking it must cite the specific unmet DoD item, and the revocation is injected into every other agent's next prompt.
+- **Six distinguishable termination reasons** — `unanimous_done`, `max_turns_reached`, `dod_rejected`, `human_abort`, `error`, `stuck_no_progress`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant O as Orchestrator
+    participant D as DeepSeek (Product Owner)
+    participant K as Kimi (Technical Lead)
+    participant Q as Qwen (QA)
+
+    Note over O,Q: Phase 0 — DoD ratification
+    O-&gt;&gt;D: Brief + candidate DoD
+    D--&gt;&gt;O: Position + [[RATIFY]]
+    O-&gt;&gt;K: Brief + candidate DoD
+    K--&gt;&gt;O: Position + [[RATIFY]]
+    O-&gt;&gt;Q: Brief + candidate DoD
+    Q--&gt;&gt;O: Risks + [[AMEND: add data-model item]]
+    Note over O: Human approves amendment — DoD frozen
+
+    Note over O,Q: Work loop — round-robin, delta relay
+    O-&gt;&gt;D: Frozen DoD + unseen messages
+    D--&gt;&gt;O: Proposal draft
+    O-&gt;&gt;K: Frozen DoD + [PO] message
+    K--&gt;&gt;O: Technical critique
+    O-&gt;&gt;Q: Frozen DoD + [PO] + [TL]
+    Q--&gt;&gt;O: Verification — [[STATUS: DONE]]
+    Note over O: All agents DONE — seal the deal
+```
+
+## Quickstart
+
+Requires macOS and Node ≥ 22.
+
+```bash
+git clone https://github.com/YOUR-USERNAME/countseal.git
+cd countseal
 npm install
-npx playwright install firefox   # only needed once per machine
-Login is manual and happens on first run: when a browser window opens and the terminal says `>>> LOG IN NOW <<<`, log in normally and wait. The session is saved in `profiles/<provider>/` forever after.
-
-## Run
-
+npx playwright install firefox     # once per machine
 node index.js --brief briefs/example-brief.md --max-turns 30
+```
 
-- `--brief` — path to a markdown file containing a `## Definition of Done` numbered list (3–7 verifiable items).
-- `--max-turns` — safety cap, including ratification turns.
+On first run, three Firefox windows open (persistent, isolated profiles). Log in to each provider manually once — credentials are never touched by the tool; login state lives in `profiles/` and persists forever. From then on, every run is one command.
 
-During a run the terminal may ask you questions (approve a DoD amendment, resolve a BLOCKED agent, retry/skip a failing provider). Answer there; the browsers keep working. Ctrl+C aborts cleanly and still saves everything.
+### Why no Docker?
 
-## Outputs
+CountSeal's execution model *is* your desktop: three headful browsers carrying your real authenticated sessions. A container would launch three browsers with no identity and nothing to orchestrate. The project deliberately trades `docker-compose up` for `npm install` + one command — no services, no build step, no daemons.
 
-`conversations/<session-id>/` — one folder per run, older runs are never touched:
-- `transcript.md` — the meeting, regenerated after every turn
-- `ledger.json` — one entry per turn (prompt, raw/clean response, status)
-- `meta.json` — frozen DoD, agent states, termination reason
-- `debug/` — screenshots + HTML dumps, written automatically on any failure
+## Every run produces
 
-## Maintenance (the part you'll actually use)
+`conversations/&lt;session-id&gt;/`, written incrementally (crash-safe), older runs never touched:
 
-Chat sites redesign their pages; when a selector breaks, a turn fails with `selector_error` and a screenshot/HTML dump lands in `debug/`.
+| File | Contents |
+|---|---|
+| `transcript.md` | Human-readable meeting, regenerated every turn |
+| `ledger.json` | Full audit trail: prompt sent, raw + cleaned response, declared status, DoD snapshot |
+| `meta.json` | Frozen DoD, per-agent state and last-seen cursor, termination reason |
+| `debug/` | Auto-captured screenshot + HTML dump on any failure |
 
-1. Look at the `.png` in `debug/` (or paste the terminal error to a trusted helper).
-2. Edit the provider's selectors in `config.js` (`input`, `messages`; `errorText` is an optional outage-banner detector).
-3. `node diag.js` opens Qwen's profile and dumps which DOM elements contain the sentinel text — a permanent debugging tool for exactly this.
+## Engineering challenges → solutions
 
-The send path is hardened (Enter → retries → force-click → JavaScript value injection → role=button click), so most transient page weirdness resolves itself; persistent failures land in the human-retry prompt instead of crashing.
+The hard part of this project is trusting a chat UI as a message bus. Highlights:
 
-## Layout
+| Challenge | Solution |
+|---|---|
+| No message-boundary API | Sentinel + status-line protocol; completion = marker present **and** text stable across two polls |
+| Stale replies mistaken for fresh ones | Pre-send signature set of all completed replies; candidates matching any are rejected |
+| Chat UIs collapse/truncate sent messages | Never match on prompt text — locate replies by protocol shape alone |
+| Silent send failures (overlays, disabled inputs, React-controlled fields) | 5-level fallback: Enter → retry → force-click → JS native-value injection → `role=button` Send click, with DOM-growth verification |
+| Provider outages ("high demand" banners) | Fail-fast banner detection instead of burning 3-minute timeouts; human retry/skip/abort gate |
+| Agents echoing votes or looping | Phase-aware prompts, one-shot protocol-violation re-prompts, similarity-based stuck-loop detection with escalation |
+| Third-party DOM drift | All selectors in one `config.js`; `diag.js` tool dumps which elements actually contain protocol markers |
 
-config.js     all provider URLs/selectors/roles — the ONLY file you should edit
-providers.js  browser automation (one class, three providers)
+## Project layout
+
+```
+config.js     provider URLs, selectors, roles — the only file you edit when a site changes
+providers.js  browser automation (one hardened driver, three providers)
 index.js      orchestrator: ratification, delta relay, state machine, termination
-sentinel.js   sentinel/status parser (self-test included)
-ledger.js     transcript/ledger/meta writers
-util.js       logging, sleeps, debug capture
-diag.js       DOM diagnostic for selector fixes
-briefs/       your meeting briefs
-profiles/     browser login state (gitignored — never commit, never delete casually)
-conversations/ session outputs (gitignored)
+sentinel.js   protocol parser (with self-tests)
+ledger.js     transcript / ledger / meta writers
+util.js       logging, debug capture
+diag.js       DOM diagnostic for selector maintenance
+briefs/       meeting briefs with a Definition of Done
+```
 
-## Notes
+## Roadmap
 
-- Roles and speaking order are set by the order of blocks in `PROVIDERS` in `config.js`.
-- Token cost note: every turn is a real message in your provider accounts, billed to whichever account is logged into each profile.
-- `node --check <file>` syntax-checks any edited file without running anything.
+- Thinking-block filtering for cleaner transcripts
+- Resume/inspect mode from `meta.json` chat URLs
+- Pluggable council sizes (2–5 agents)
+- Headless mode once provider ToS allows it
+
+## License
+
+MIT
