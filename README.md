@@ -1,5 +1,3 @@
-&lt;div align="center"&gt;
-
 # 🦭 CountSeal
 
 **A council of AI agents that counts its votes until it seals the deal.**
@@ -22,7 +20,12 @@ No APIs. No subscriptions. The orchestrator is ~800 lines of dependency-light No
 
 ## Demo
 
-*(Record yours — see "Capturing the demo" below. GitHub plays video natively in READMEs.)*
+
+
+https://github.com/user-attachments/assets/53ea09db-2f65-48c6-943a-0298e34ab0d9
+
+
+&lt;div align="center"&gt;
 
 ```text
 [11:53:55] DeepSeek: vote → RATIFY
