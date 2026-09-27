@@ -17,24 +17,24 @@ export const PROVIDERS = {
     startUrl: 'https://chat.deepseek.com',
     input: 'textarea',
     sendButton: 'button[aria-label*="send" i]',
-    messages: '[class*="message"]',
+    messages: '[class*="message"]',     // KEEP — see note below
+    timeoutMs: 600000,                  // the fix for your current symptom
   },
   kimi: {
     label: 'Kimi',
     role: 'Technical Lead',
     startUrl: 'https://www.kimi.ai',
     input: 'textarea, [contenteditable="true"]',
-    sendButton: 'button:has-text("Send")',
-    messages: '.segment-container',
+    sendButton: '.send-button-container',  // optional; Enter remains primary
+    messages: '.segment-container',        // KEEP — works today
   },
   qwen: {
     label: 'Qwen',
     role: 'QA',
     startUrl: 'https://chat.qwen.ai',
-    input: 'textarea',
-    sendButton: 'button:has-text("Send")',
-    messages: '.qwen-chat-message-assistant',
-    errorText: 'issue connecting',
+    input: 'textarea.message-input-textarea',
+    sendButton: '.message-input-right-button-send',  // was: matched nothing
+    messages: '.qwen-chat-message-assistant',        // KEEP — assistant-only, works
   },
 };
 

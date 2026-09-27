@@ -107,7 +107,7 @@ export class Provider {
   // The sent prompt matches neither pattern, so it can never be mistaken for a reply.
   async awaitResponse() {
     const msgs = this.page.locator(this.cfg.messages);
-    const deadline = Date.now() + RESPONSE_TIMEOUT_MS;
+    const deadline = Date.now() + (this.cfg.timeoutMs ?? RESPONSE_TIMEOUT_MS);
     const DONE_RE = /\[\[END_7f3a\]\]\s*\n\s*\[\[STATUS:[^\]]*\]\]/;
 
     let previous = null, stable = 0;
