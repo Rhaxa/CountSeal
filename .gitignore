@@ -2,3 +2,5 @@ node_modules/
 profiles/
 conversations/
 .DS_Store
+briefs/*
+!briefs/example-brief.md
